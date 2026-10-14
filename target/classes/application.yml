@@ -1,0 +1,45 @@
+server:
+  port: ${PORT:8080}
+spring:
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:true}
+      mail.smtp.connectiontimeout: 10000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://postgresql-17:5432/xopy-app}
+    username: ${DATABASE_USER:postgresql-jw-visit}
+    password: ${DATABASE_PASSWORD:pwd_3kw7sR}
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 42MB
+app:
+  jwt-secret: ${JWT_SECRET:LS_MAPS_VISIT_JWT_SECRET_PRODUCAO_2026_9f83a72c4d61e580}
+  password-reset:
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+    from: ${MAIL_FROM:}
+  issuer: xopy-backend
+  cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174}
+  upload-dir: ${UPLOAD_DIR:./uploads}
+  bootstrap-admin-email: ${ADMIN_EMAIL:admin@xopy.com}
+  bootstrap-admin-password: ${ADMIN_PASSWORD:jke92ad123456}
+  mp:
+    access-token: ${MP_ACCESS_TOKEN:APP_USR-1526281998618580-101321-83901d53d2a3a4e0008120bb3c85adc7-1816422450}
+    webhook-secret: ${MP_WEBHOOK_SECRET:40ac8a30f698ef6544f3c8d45b9ad81103451a07ec53ea7d7f23b404225e3bb1}
+    collector-id: ${MP_COLLECTOR_ID:1816422450}
+    frontend-url: ${MP_FRONTEND_URL:https://frontend.vps11610.panel.icontainer.cloud}
+    webhook-url: ${MP_WEBHOOK_URL:https://frontend.vps11610.panel.icontainer.cloud/api/payments/webhook}
+    sandbox: ${MP_SANDBOX:false}
+    client-id: ${MP_CLIENT_ID:}
+    client-secret: ${MP_CLIENT_SECRET:}
+    oauth-redirect-url: ${MP_OAUTH_REDIRECT_URL:}
+    token-encryption-key: ${MP_TOKEN_ENCRYPTION_KEY:}
