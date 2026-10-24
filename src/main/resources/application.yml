@@ -31,7 +31,7 @@ app:
   cors-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174}
   upload-dir: ${UPLOAD_DIR:./uploads}
   bootstrap-admin-email: ${ADMIN_EMAIL:admin@xopy.com}
-  bootstrap-admin-password: ${ADMIN_PASSWORD:z0p&95Y4@}
+  bootstrap-admin-password: ${ADMIN_PASSWORD:z0p&95Y4@e%4}
   mp:
     access-token: ${MP_ACCESS_TOKEN:APP_USR-1526281998618580-101321-83901d53d2a3a4e0008120bb3c85adc7-1816422450}
     webhook-secret: ${MP_WEBHOOK_SECRET:40ac8a30f698ef6544f3c8d45b9ad81103451a07ec53ea7d7f23b404225e3bb1}
