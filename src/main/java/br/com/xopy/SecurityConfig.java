@@ -60,7 +60,7 @@ public class SecurityConfig {
     }).csrf(c -> c.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(a -> a.requestMatchers("/api/payments/oauth/callback", "/api/payments/webhook", "/api/health", "/api/analytics/visit", "/api/auth/login", "/api/auth/register", "/api/auth/forgot-password", "/api/auth/reset-password",
-            "/api/data/**", "/api/site/**", "/api/files/public/**").permitAll().anyRequest().authenticated())
+            "/api/catalog/**", "/api/data/**", "/api/site/**", "/api/files/public/**").permitAll().anyRequest().authenticated())
         .oauth2ResourceServer(o -> o.jwt(j -> {
         })).build();
   }

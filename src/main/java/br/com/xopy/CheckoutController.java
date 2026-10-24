@@ -180,6 +180,7 @@ public class CheckoutController {
         if (lookup.isEmpty())
             throw new ResponseStatusException(NOT_FOUND, "Pedido não encontrado");
         var initial = json.readTree(String.valueOf(lookup.get(0).get("metadata")));
+        if(initial.has("service_contract_id"))throw new ResponseStatusException(CONFLICT,"Contratação de serviço formalizada exige análise do Xopy para cancelamento");
         if (initial.has("checkout_request_id")) {
             UUID requestId = UUID.fromString(initial.path("checkout_request_id").asText());
             db.queryForList("select request_id from checkout_requests where buyer_id=? and request_id=? for update",

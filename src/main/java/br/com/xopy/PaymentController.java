@@ -80,6 +80,7 @@ public class PaymentController {
         // never creates a second preference.
         var session = tx.execute(s -> {
             lock(buyer, request);
+            ServiceCaseGuard.checkout(db,request,buyer);
             if (!db.queryForList(
                     "select id from payment_sessions where buyer_id=? and request_id=? and seller_id is null", buyer,
                     request).isEmpty())
@@ -102,6 +103,7 @@ public class PaymentController {
             db.update(
                     "insert into payment_sessions(id,buyer_id,request_id,seller_id,amount,collector_id,sandbox,recipient,status) values(?,?,?,?,?,?,?,'xopy','creating')",
                     id, buyer, request, seller, amount, credentials.collector(), credentials.sandbox());
+            syncServiceContract(id);
             var result = new HashMap<String, Object>();
             result.put("id", id);
             result.put("amount", amount);
@@ -126,9 +128,10 @@ public class PaymentController {
                 throw new ResponseStatusException(CONFLICT, "Credenciais não pertencem à conta Mercado Pago do Xopy");
             boolean rentalCheckout = !db.queryForList(
                     "select id from rental_requests where checkout_id=? and customer_id=?", request, buyer).isEmpty();
-            String back = mp.frontend() + "/pagamento/" + request + (rentalCheckout ? "?rental=1" : "");
+            boolean serviceCheckout = !db.queryForList("select id from service_contracts where checkout_id=? and customer_id=?", request, buyer).isEmpty();
+            String back = mp.frontend() + "/pagamento/" + request + (serviceCheckout ? "?service=1" : rentalCheckout ? "?rental=1" : "");
             var body = new LinkedHashMap<String, Object>();
-            body.put("items", List.of(Map.of("id", request.toString(), "title", "Compra Xopy", "quantity", 1,
+            body.put("items", List.of(Map.of("id", request.toString(), "title", serviceCheckout ? "Contratação de serviço Xopy" : rentalCheckout ? "Locação Xopy" : "Compra Xopy", "quantity", 1,
                     "unit_price", session.get("amount"), "currency_id", "BRL")));
             body.put("payer", Map.of("email", account.get("email")));
             body.put("external_reference", session.get("id").toString());
@@ -148,12 +151,13 @@ public class PaymentController {
                 db.update(
                         "update payment_sessions set preference_id=?,checkout_url=?,status=case when status='creating' then 'ready' else status end,updated_at=now() where id=?",
                         preference.path("id").asText(), url, session.get("id"));
+                syncServiceContract((UUID) session.get("id"));
             });
             return view(db.queryForMap("select * from payment_sessions where id=?", session.get("id")));
         } catch (RuntimeException e) {
-            tx.executeWithoutResult(s -> db.update(
+            tx.executeWithoutResult(s -> { db.update(
                     "update payment_sessions set status='review_required',updated_at=now() where id=? and status='creating'",
-                    session.get("id")));
+                    session.get("id")); syncServiceContract((UUID)session.get("id")); });
             throw e;
         }
     }
@@ -216,7 +220,9 @@ public class PaymentController {
                     groups.add(group);
                 }
             }
-            return Map.of("enabled", mp.enabled(), "groups", groups, "amount",
+            var serviceCases=db.queryForList("select c.service_case_status from service_contracts k join conversations c on c.id=k.conversation_id where k.checkout_id=? and k.customer_id=?",request,buyer);
+            boolean serviceBlocked=!serviceCases.isEmpty()&&!Objects.toString(serviceCases.get(0).get("service_case_status"),"active").equals("active");
+            return Map.of("enabled", mp.enabled(), "groups", groups, "serviceBlocked",serviceBlocked,"amount",
                     rows.stream().map(o -> new BigDecimal(o.get("total_amount").toString())).reduce(BigDecimal.ZERO,
                             BigDecimal::add));
         });
@@ -327,6 +333,38 @@ public class PaymentController {
                 : new Object[] { status, method, buyer, request.toString(), session.get("seller_id") });
     }
 
+    void syncServiceContract(UUID sessionId) {
+        db.update("""
+          WITH desired AS (
+            SELECT request_id,buyer_id,seller_id,
+             CASE status WHEN 'approved' THEN 'paid' WHEN 'refunded' THEN 'refunded'
+              WHEN 'charged_back' THEN 'charged_back' WHEN 'pending' THEN 'payment_pending'
+              WHEN 'creating' THEN 'payment_pending' WHEN 'review_required' THEN 'payment_review'
+              WHEN 'duplicate_review' THEN 'payment_review'
+              ELSE CASE (SELECT e.status FROM payment_events e WHERE e.session_id=s.id ORDER BY e.updated_at DESC,e.payment_id DESC LIMIT 1)
+                WHEN 'rejected' THEN 'payment_rejected' WHEN 'cancelled' THEN 'payment_cancelled' ELSE 'awaiting_payment' END
+             END AS target_status
+            FROM payment_sessions s WHERE id=?
+          ), changed AS (
+            UPDATE service_contracts c SET status=d.target_status,updated_at=now() FROM desired d
+            WHERE c.checkout_id=d.request_id AND c.customer_id=d.buyer_id AND c.provider_user_id=d.seller_id
+              AND c.accepted_at IS NOT NULL AND c.status IS DISTINCT FROM d.target_status
+            RETURNING c.*
+          )
+          INSERT INTO notifications(user_id,title,message,type,data)
+          SELECT recipient,'Pagamento do serviço atualizado',
+            CASE status WHEN 'paid' THEN 'Pagamento confirmado pelo Mercado Pago.'
+              WHEN 'refunded' THEN 'Pagamento reembolsado.' WHEN 'charged_back' THEN 'Pagamento contestado.'
+              WHEN 'payment_pending' THEN 'Pagamento em processamento ou aguardando confirmação.'
+              WHEN 'payment_rejected' THEN 'Pagamento recusado. Consulte o pagamento para tentar novamente.'
+              WHEN 'payment_cancelled' THEN 'Tentativa de pagamento cancelada.'
+              WHEN 'payment_review' THEN 'Pagamento em análise. Consulte o Xopy antes de pagar novamente.'
+              ELSE 'Contrato aguardando pagamento.' END,
+            'new_message',jsonb_build_object('conversation_id',conversation_id,'service_contract_id',id)
+          FROM changed CROSS JOIN LATERAL (VALUES(customer_id),(provider_user_id)) recipients(recipient)
+          """,sessionId);
+    }
+
     void reconcile(JsonNode payment) {
         UUID sessionId;
         try {
@@ -351,6 +389,7 @@ public class PaymentController {
             db.update(
                     "insert into payment_events(payment_id,session_id,status,method,amount) values(?,?,?,?,?) on conflict(payment_id) do update set status=excluded.status,method=excluded.method,updated_at=now()",
                     id, sessionId, status, method, session.get("amount"));
+            try {
             if ("approved".equals(status)) {
                 if (session.get("approved_payment_id") != null) {
                     if (!id.equals(session.get("approved_payment_id")))
@@ -393,6 +432,7 @@ public class PaymentController {
                             "update payment_sessions set status='ready',updated_at=now() where id=? and status not in ('review_required','duplicate_review')",
                             sessionId);
             }
+            } finally { syncServiceContract(sessionId); }
         });
     }
 }

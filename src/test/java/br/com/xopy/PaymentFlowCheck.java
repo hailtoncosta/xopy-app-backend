@@ -32,12 +32,14 @@ public class PaymentFlowCheck {
    }
    if(sql.contains("from orders")){var sellers=args.length==3?List.of((UUID)args[2]):List.of(SELLER,SELLER2);return sellers.stream().filter(orderStatus::containsKey).map(id->Map.<String,Object>of("id",id,"seller_id",id,"status",orderStatus.get(id),"total_amount",new BigDecimal(id.equals(SELLER)?"50.00":"30.00"))).toList();}
    if(sql.contains("from payment_events"))return events.values().stream().filter(e->e.get("session_id").equals(args[0])&&Set.of("pending","in_process","authorized").contains(e.get("status"))).toList();
+   if(sql.contains("from service_contracts"))return List.of();
    if(sql.contains("from rental_requests"))return List.of();
    if(sql.contains("from user_profiles"))return List.of(Map.of("full_name","Vendedor teste"));
    throw new AssertionError("Unexpected query: "+sql);
   }
   @Override public Map<String,Object> queryForMap(String sql,Object... args){return sessions.get(args[0]);}
   @Override public int update(String sql,Object... args){
+   if(sql.stripLeading().startsWith("WITH desired"))return 0; // This fixture has no service contracts.
    if(sql.startsWith("insert into payment_sessions")){var s=new HashMap<String,Object>();s.put("id",args[0]);s.put("buyer_id",args[1]);s.put("request_id",args[2]);s.put("seller_id",args[3]);s.put("amount",args[4]);s.put("collector_id",args[5]);s.put("sandbox",args[6]);s.put("recipient","xopy");s.put("status","creating");sessions.put((UUID)args[0],s);}
    else if(sql.startsWith("update payment_sessions")){
     var s=sessions.get(args[args.length-1]);
